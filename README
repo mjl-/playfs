@@ -1,0 +1,10 @@
+playfs - maintain play list and play audio files
+
+typically mounted under /mnt/play
+/ctl
+	write commands to, such as "play", "stop", "pause", "next", "previous", "repeat", "norepeat", "random", "norandom"
+/events
+	read events from, such as "done", "playing $path", "error $path $error" "stopped" "started"
+/list
+	the playlist.  read the entire list from it (each line contains a path).
+	open with truncate to clear the list, write to it to add to the list.
