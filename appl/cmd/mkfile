@@ -4,6 +4,7 @@ DIRS=\
 
 TARG=\
 	playfs.dis\
+	mp3dec\
 
 SYSMODULES=\
 	arg.m\

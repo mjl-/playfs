@@ -24,6 +24,7 @@ rand: Rand;
 
 sprint: import sys;
 Styxserver, Fid, Navigator, Navop: import styxservers;
+Context: import sh;
 
 Enotfound, Enotdir: import Styxservers;
 
@@ -40,13 +41,15 @@ tab := array[] of {
 	(Qoffset,	"offset",	8r444),
 };
 
-Playing, Started, Paused, Stopped: con iota;	# state
-states := array[] of {"started", "playing", "paused", "stopped"};
+Playing, Started, Paused, Stopped: con iota;
+states := array[] of {"playing", "started", "paused", "stopped"};
 
 srv: ref Styxserver;
 
 pid := -1;
-donech: chan of (string, string);
+donech: chan of string;
+playerrch: chan of string;
+pausech: chan of int;
 state := Stopped;
 playlist := array[0] of string;
 order := array[0] of int;
@@ -109,30 +112,23 @@ init(nil: ref Draw->Context, args: list of string)
 	msgc: chan of ref Tmsg;
 	(msgc, srv) = Styxserver.new(sys->fildes(0), nav, big Qroot);
 
-	donech = chan of (string, string);
+	donech = chan of string;
+	playerrch = chan of string;
 
 done:
 	for(;;) alt {
-	(path, err) := <-donech =>
-		say(sprint("done, path=%q err=%q", path, err));
+	err := <-playerrch =>
+		say("play error: "+err);
+		filewrite(eventfiles, sprint("error %q", err));
+		next();
+
+	path := <-donech =>
+		say(sprint("done, path=%q", path));
 		if(pid >= 0)
 			killgrp(pid);
 		pid = -1;
-		if(err != nil)
-			filewrite(eventfiles, "played "+path);
-		else
-			filewrite(eventfiles, sprint("error %q %q", path, err));
-		if(state == Playing) {
-			if(len playlist > 0 && (repeat || playoff < len playlist-1)) {
-				say("spawning new player");
-				playoff = (playoff+1)%len playlist;
-				start();
-			} else if(state == Playing) {
-				say("no more files to play, going into started mode");
-				state = Started;
-				filewrite(eventfiles, "done");
-			}
-		}
+		filewrite(eventfiles, "played "+path);
+		next();
 
 	gm := <-msgc =>
 		if(gm == nil)
@@ -146,6 +142,19 @@ done:
 	}
 }
 
+next()
+{
+	if(state != Playing)
+		return;
+	if(len playlist > 0 && (repeat || playoff < len playlist-1)) {
+		playoff = (playoff+1)%len playlist;
+		start();
+	} else {
+		say("no more files to play, going into started mode");
+		state = Started;
+		filewrite(eventfiles, "done");
+	}
+}
 
 clearlist()
 {
@@ -246,6 +255,7 @@ stop()
 start(): int
 {
 	if(len playlist > 0) {
+		say("spawning new player");
 		state = Playing;
 		filewrite(eventfiles, status());
 		spawn player(pidch := chan of int, playlist[order[playoff]]);
@@ -265,12 +275,80 @@ status(): string
 
 player(pidch: chan of int, path: string)
 {
-	sys->pctl(Sys->NEWPGRP|Sys->FORKFD, nil);
-	pidch <-= sys->pctl(0, nil);
-	err := sh->run(nil, "play"::path::nil);
+	pidch <-= sys->pctl(Sys->NEWPGRP|Sys->FORKFD, nil);
+
+	pfd := sys->open(path, Sys->OREAD);
+	if(pfd == nil)
+		return playerror(sprint("open %s: %r", path));
+	infds := array[2] of ref Sys->FD;
+	if(sys->pipe(infds) < 0)
+		return playerror(sprint("pipe: %r"));
+	outfds := array[2] of ref Sys->FD;
+	if(sys->pipe(outfds) < 0)
+		return playerror(sprint("pipe: %r"));
+	afd := sys->open("/dev/audio", Sys->OWRITE);
+	if(afd == nil)
+		return playerror(sprint("open /dev/audio: %r"));
+
+	spawn stream(pfd, infds[0]);
+	pausech = chan of int;
+	writech := chan of array of byte;
+	spawn decreader(outfds[0], writech);
+	spawn run(infds[1], outfds[1], "mp3dec");
+	infds = nil;
+	outfds = nil;
+	writer(path, afd, writech, pausech);
+}
+
+playerror(err: string)
+{
+	playerrch <-= err;
+}
+
+stream(fromfd, tofd: ref Sys->FD)
+{
+	if(sys->stream(fromfd, tofd, 32*1024) < 0)
+		return playerror(sprint("stream: %r"));
+}
+
+run(infd, outfd: ref Sys->FD, prog: string)
+{
+	sys->pctl(Sys->NEWFD, infd.fd::outfd.fd::nil);
+	sys->dup(infd.fd, 0);
+	sys->dup(outfd.fd, 1);
+	sh->run(nil, prog::nil);
+	ctxt := Context.new(nil);
+	err := ctxt.run(ref Sh->Listnode(nil, prog)::nil, 1);
 	if(err != nil)
-		say("play error: "+err);
-	donech <-= (path, err);
+		return playerror(err);
+}
+
+decreader(fd: ref Sys->FD, c: chan of array of byte)
+{
+	for(;;) {
+		n := sys->readn(fd, d := array[32*1024] of byte, len d);
+		if(n < 0)
+			return playerror(sprint("decreader read: %r"));
+		c<-= d[:n];
+		if(n == 0)
+			break;
+	}
+}
+
+writer(path: string, fd: ref Sys->FD, wc: chan of array of byte, pc: chan of int)
+{
+	for(;;) alt {
+	d := <-wc =>
+		if(len d == 0) {
+			donech <-= path;
+			return;
+		}
+		if(sys->write(fd, d, len d) != len d)
+			return playerror(sprint("writer write: %r"));
+	p := <-pc =>
+		while(p)
+			p = <-pc;
+	}
 }
 
 ctl(m: ref Tmsg.Write)
@@ -279,16 +357,16 @@ ctl(m: ref Tmsg.Write)
 		case hd l {
 		"next" =>
 			playoff = (playoff+1)%len playlist;
-			if(state == Playing) {
+			if(state == Playing || state == Paused)
 				stop();
+			if(state == Playing)
 				start();
-			}
 		"previous" =>
 			playoff = (playoff-1+len playlist)%len playlist;
-			if(state == Playing) {
+			if(state == Playing || state == Paused)
 				stop();
+			if(state == Playing)
 				start();
-			}
 		"stop" =>
 			stop();
 			if(state != Stopped) {
@@ -296,14 +374,21 @@ ctl(m: ref Tmsg.Write)
 				filewrite(eventfiles, status());
 			}
 		"play" =>
-			if(state != Playing && state != Started) {
+			case state {
+			Stopped =>
 				state = Started;
 				filewrite(eventfiles, status());
 				start();
+			Paused =>
+				pausech <-= 0;
+				state = Playing;
 			}
 		"pause" =>
-			state = Paused;
-			# xxx
+			if(state == Playing) {
+				pausech <-= 1;
+				state = Paused;
+				filewrite(eventfiles, status());
+			}
 		"random" =>
 			random = 1;
 			randomize(order[playoff:]);
@@ -344,7 +429,7 @@ dostyx(gm: ref Tmsg)
 	Open =>
 		(f, nil, nil, nil) := srv.canopen(m);
 		if(f != nil && m.mode & Sys->OTRUNC && int f.path == Qlist) {
-			if(state == Playing) {
+			if(state == Playing || state == Paused) {
 				stop();
 				state = Started;
 			}
@@ -378,7 +463,6 @@ dostyx(gm: ref Tmsg)
 			srv.default(m);
 			return;
 		}
-		say(sprint("read f.path=%bd", f.path));
 		case int f.path {
 		Qstatus =>
 			srv.reply(styxservers->readstr(m, status()));

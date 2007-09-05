@@ -2,25 +2,27 @@ playfs - maintain play list and play audio files
 
 typically mounted under /mnt/play
 /ctl
-	write commands to, such as "play", "stop", "pause", "next", "previous", "repeat", "norepeat", "random", "norandom"
+	write commands to, such as "play", "stop", "pause", "next", "previous", "rewind" "repeat", "norepeat", "random", "norandom"
 /events
 	read events from, such as "done", "playing $path", "error $path $error" "stopped" "started"
 /list
 	the playlist.  read the entire list from it (each line contains a path).
 	open with truncate to clear the list, write to it to add to the list.
-
-
-
+	read back in the order the elements were written
+/status
+	current status of player: started, stopped, paused, or playing $path
+/offset
+	offset (in line numbers) in playlist, starts at 0.  index to orderlist.
+/orderlist
+	playlist in order of being played.  when playing in "norandom" order, this will be the same as the contents of /list.  when playing random, this is the shuffled list.  note that only /list is writable, /orderlist is read-only.
 
 todo:
-- read audio data and write to /dev/audio ourselves, allows implementing pause 
-- see why i get "audio file busy" sometimes, perhaps play doesn't get closed properly
-
-- add mp3dec or play to this hg repo
-- think about an acme program, mostly buttons that say "play" "stop" etc.
+- think about an acme program, mostly commands that say "play" "stop" etc.
 - manual pages, eventually
 
 testing:
+- add mp3dec or play to this hg repo
+- read audio data and write to /dev/audio ourselves, allows implementing pause 
 - somehow allow user to read currently position in playlist file? (file "offset")
 - allow reading of the playlist in played order (not order of adding) (orderlist)
 - give better status info in playview
