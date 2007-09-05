@@ -11,19 +11,20 @@ tk $wid button '.b1 -text play -command {send cmd play}'
 tk $wid button '.b2 -text stop -command {send cmd stop}'
 tk $wid button '.b3 -text prev -command {send cmd prev}'
 tk $wid button '.b4 -text next -command {send cmd next}'
-tk $wid label '.l1 -text random: '
-tk $wid button '.b5 -text yes -command {send cmd random}'
-tk $wid button '.b6 -text no -command {send cmd norandom}'
-tk $wid label '.l2 -text repeat: '
-tk $wid button '.b7 -text yes -command {send cmd repeat}'
-tk $wid button '.b8 -text no -command {send cmd norepeat}'
+tk $wid button '.brew -text rewind -command {send cmd rewind}'
+tk $wid label '.l1 -text random'
+tk $wid button '.b5 -text + -command {send cmd random}'
+tk $wid button '.b6 -text - -command {send cmd norandom}'
+tk $wid label '.l2 -text repeat'
+tk $wid button '.b7 -text + -command {send cmd repeat}'
+tk $wid button '.b8 -text - -command {send cmd norepeat}'
 tk $wid label '.event -text -'
-tk $wid pack .b1 .b2 .b3 .b4 .l1 .b5 .b6 .l2 .b7 .b8 -side left -in .f1
+tk $wid pack .b1 .b2 .b3 .b4 .brew .l1 .b5 .b6 .l2 .b7 .b8 -side left -in .f1
 tk $wid pack .event -in .f2
 tk $wid pack .f1 .f2
 tk onscreen $wid
 tk $wid update
 while {} { tk winctl $wid ${recv $wid} } &
 while {} { echo ${recv cmd} >/mnt/play/ctl } &
-{ </mnt/play/events { while {} { tk $wid .event configure -text `{read}} }} &
+{ </mnt/play/events { while {} { tk $wid .event configure -text "{read}; tk $wid update} }} &
 }

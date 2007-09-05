@@ -8,3 +8,30 @@ typically mounted under /mnt/play
 /list
 	the playlist.  read the entire list from it (each line contains a path).
 	open with truncate to clear the list, write to it to add to the list.
+
+
+
+
+todo:
+- read audio data and write to /dev/audio ourselves, allows implementing pause 
+- see why i get "audio file busy" sometimes, perhaps play doesn't get closed properly
+
+- add mp3dec or play to this hg repo
+- think about an acme program, mostly buttons that say "play" "stop" etc.
+- manual pages, eventually
+
+testing:
+- somehow allow user to read currently position in playlist file? (file "offset")
+- allow reading of the playlist in played order (not order of adding) (orderlist)
+- give better status info in playview
+- status file showing current status?
+- better status messages, say what is playing.  add state to events fid when opened?
+	played path
+	error path err (quoted)
+	done (nothing more to play)
+	playing path (started playing path)
+	stopped (got a stop request or this is read when opening events file)
+	started (got a play request)
+	paused 
+
+done:

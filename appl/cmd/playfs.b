@@ -1,6 +1,3 @@
-# - read audio data and write to /dev/audio ourselves, allows implementing pause
-# - see why i get "audio file busy" sometimes, perhaps play doesn't get closed properly
-
 implement Playfs;
 
 include "sys.m";
@@ -32,12 +29,15 @@ Enotfound, Enotdir: import Styxservers;
 
 Dflag, dflag: int;
 
-Qroot, Qctl, Qevents, Qlist: con iota;
+Qroot, Qctl, Qstatus, Qevents, Qlist, Qorderlist, Qoffset, Qmax: con iota;
 tab := array[] of {
 	(Qroot,		".",		Sys->DMDIR|8r555),
 	(Qctl,		"ctl",		8r222),
+	(Qstatus,	"status",	8r444),
 	(Qevents,	"events",	8r444),
-	(Qlist,		"list",	8r666),
+	(Qlist,		"list",		8r666),
+	(Qorderlist,	"orderlist",	8r444),
+	(Qoffset,	"offset",	8r444),
 };
 
 Playing, Started, Paused, Stopped: con iota;	# state
@@ -52,7 +52,6 @@ playlist := array[0] of string;
 order := array[0] of int;
 playoff: int;
 repeat, random: int;
-playing: int;
 mtime: int;
 
 File: adt {
@@ -209,6 +208,8 @@ writelist(d: array of byte)
 
 cached := array[0] of byte;
 cachetime := 0;
+ocached := array[0] of byte;
+ocachetime := 0;
 
 listdata(): array of byte
 {
@@ -223,6 +224,18 @@ listdata(): array of byte
 	
 }
 
+orderlistdata(): array of byte
+{
+	if(ocachetime == 0 || ocachetime <= mtime) {
+		new := "";
+		for(i := 0; i < len playlist; i++)
+			new += playlist[order[i]]+"\n";
+		ocached = array of byte new;
+		ocachetime = daytime->now();
+	}
+	return ocached;
+}
+
 stop()
 {
 	if(pid >= 0)
@@ -233,12 +246,21 @@ stop()
 start(): int
 {
 	if(len playlist > 0) {
-		filewrite(eventfiles, "playing "+playlist[order[playoff]]);
+		state = Playing;
+		filewrite(eventfiles, status());
 		spawn player(pidch := chan of int, playlist[order[playoff]]);
 		pid = <-pidch;
 		return 1;
 	}
 	return 0;
+}
+
+status(): string
+{
+	s := states[state];
+	if(state == Playing)
+		s += " "+playlist[order[playoff]];
+	return s;
 }
 
 player(pidch: chan of int, path: string)
@@ -269,17 +291,15 @@ ctl(m: ref Tmsg.Write)
 			}
 		"stop" =>
 			stop();
-			if(state != Stopped)
-				filewrite(eventfiles, "stopped");
-			state = Stopped;
+			if(state != Stopped) {
+				state = Stopped;
+				filewrite(eventfiles, status());
+			}
 		"play" =>
-			if(state != Playing && state != Started)
-				filewrite(eventfiles, "started");
-			if(state != Playing) {
-				if(start())
-					state = Playing;
-				else
-					state = Started;
+			if(state != Playing && state != Started) {
+				state = Started;
+				filewrite(eventfiles, status());
+				start();
 			}
 		"pause" =>
 			state = Paused;
@@ -332,7 +352,7 @@ dostyx(gm: ref Tmsg)
 		}
 		if(f != nil && int f.path == Qevents) {
 			eventfiles = add(eventfiles, array[] of {file := File.new(f.fid)});
-			file.putdata(states[state]);
+			file.putdata(status());
 		}
 		srv.default(m);
 
@@ -345,10 +365,8 @@ dostyx(gm: ref Tmsg)
 			ctl(m);
 		Qlist =>
 			writelist(m.data);
-			if(len playlist > 0 && state == Started) {
-				state = Playing;
+			if(len playlist > 0 && state == Started)
 				start();
-			}
 			srv.reply(ref Rmsg.Write(m.tag, len m.data));
 		* =>
 			srv.default(m);
@@ -362,13 +380,16 @@ dostyx(gm: ref Tmsg)
 		}
 		say(sprint("read f.path=%bd", f.path));
 		case int f.path {
+		Qstatus =>
+			srv.reply(styxservers->readstr(m, status()));
 		Qlist =>
-			data := listdata();
-			srv.reply(styxservers->readbytes(m, data));
-
+			srv.reply(styxservers->readbytes(m, listdata()));
+		Qorderlist =>
+			srv.reply(styxservers->readbytes(m, orderlistdata()));
 		Qevents =>
 			fileread(eventfiles, m);
-
+		Qoffset =>
+			srv.reply(styxservers->readstr(m, string playoff));
 		* =>
 			srv.default(m);
 		}
@@ -402,7 +423,7 @@ again:
 			}
 			case int op.path&16rff {
 			Qroot =>
-				for(i := Qctl; i <= Qlist; i++)
+				for(i := Qctl; i < Qmax; i++)
 					if(tab[i].t1 == op.name) {
 						op.reply <-= (dir(tab[i].t0), nil);
 						continue again;
@@ -412,8 +433,8 @@ again:
 				op.reply <-= (nil, Enotdir);
 			}
 		Readdir =>
-			for(i := op.offset; i < op.count && i < len tab-1; i++)
-				op.reply <-= (dir(Qctl+i), nil);
+			for(i := 0; i < op.count && i+op.offset < len tab-1; i++)
+				op.reply <-= (dir(Qroot+1+i+op.offset), nil);
 			op.reply <-= (nil, nil);
 		}
 	}
@@ -434,6 +455,8 @@ dir(path: int): ref Sys->Dir
 	d.mode = perm;
 	if(path == Qlist)
 		d.length = big len listdata();
+	else if(path == Qorderlist)
+		d.length = big len orderlistdata();
 	return d;
 }
 
