@@ -2,7 +2,7 @@
 sh -c {
 load std tk expr
 pctl newpgrp
-wid=${tk window play}
+wid=${tk window wm/playview}
 chan cmd
 chan audiocmd
 tk namechan $wid cmd
