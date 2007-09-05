@@ -1,4 +1,5 @@
 # - read audio data and write to /dev/audio ourselves, allows implementing pause
+# - see why i get "audio file busy" sometimes, perhaps play doesn't get closed properly
 
 implement Playfs;
 
@@ -194,6 +195,8 @@ writelist(d: array of byte)
 	i := 0;
 	for(; l != nil; l = tl l)
 		a[i++] = hd l;
+	for(i = 0; i < len o; i++)
+		o[i] = len order+i;
 	playlist = add(playlist, a);
 	order = addints(order, o);
 	if(random)
