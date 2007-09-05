@@ -22,7 +22,7 @@ daytime: Daytime;
 sh: Sh;
 rand: Rand;
 
-sprint: import sys;
+fprint, sprint, fildes: import sys;
 Styxserver, Fid, Navigator, Navop: import styxservers;
 Context: import sh;
 
@@ -110,7 +110,7 @@ init(nil: ref Draw->Context, args: list of string)
 
 	nav := Navigator.new(navch);
 	msgc: chan of ref Tmsg;
-	(msgc, srv) = Styxserver.new(sys->fildes(0), nav, big Qroot);
+	(msgc, srv) = Styxserver.new(fildes(0), nav, big Qroot);
 
 	donech = chan of string;
 	playerrch = chan of string;
@@ -135,7 +135,7 @@ done:
 			break;
 		pick m := gm {
 		Readerror =>
-			warn("read error: "+m.error);
+			fprint(fildes(2), "read error: %s\n ", m.error);
 			break done;
 		}
 		dostyx(gm);
@@ -146,7 +146,8 @@ next()
 {
 	if(state != Playing)
 		return;
-	if(len playlist > 0 && (repeat || playoff < len playlist-1)) {
+	if(repeat || playoff < len playlist-1) {
+		say(sprint("next, repeat=%d playoff=%d", repeat, playoff));
 		playoff = (playoff+1)%len playlist;
 		start();
 	} else {
@@ -292,7 +293,7 @@ player(pidch: chan of int, path: string)
 
 	spawn stream(pfd, infds[0]);
 	pausech = chan of int;
-	writech := chan of array of byte;
+	writech := chan[8] of array of byte;
 	spawn decreader(outfds[0], writech);
 	spawn run(infds[1], outfds[1], "mp3dec");
 	infds = nil;
@@ -356,16 +357,16 @@ ctl(m: ref Tmsg.Write)
 	for((nil, l) := sys->tokenize(string m.data, "\n"); l != nil; l = tl l)
 		case hd l {
 		"next" =>
-			playoff = (playoff+1)%len playlist;
 			if(state == Playing || state == Paused)
 				stop();
-			if(state == Playing)
+			playoff = (playoff+1)%len playlist;
+			if((repeat || playoff > 0) && state == Playing)
 				start();
 		"previous" =>
-			playoff = (playoff-1+len playlist)%len playlist;
 			if(state == Playing || state == Paused)
 				stop();
-			if(state == Playing)
+			playoff = (playoff-1+len playlist)%len playlist;
+			if((repeat || playoff < len playlist-1) && state == Playing)
 				start();
 		"stop" =>
 			stop();
@@ -499,7 +500,6 @@ again:
 		pick op := navop {
 		Stat =>
 			op.reply <-= (dir(int op.path), nil);
-
 		Walk =>
 			if(op.name == "..") {
 				op.reply <-= (dir(Qroot), nil);
@@ -610,7 +610,7 @@ fileread(f: array of ref File, m: ref Tmsg.Read)
 			f[i].putread(m);
 			while((op := f[i].styxop()) != nil)
 				srv.reply(op);
-			return;
+			break;
 		}
 }
 
@@ -618,7 +618,7 @@ fileflush(f: array of ref File, tag: int)
 {
 	for(i := 0; i < len f; i++)
 		if(f[i].flushop(tag))
-			return;
+			break;
 }
 
 fileremove(f: array of ref File, fid: int)
@@ -627,7 +627,7 @@ fileremove(f: array of ref File, fid: int)
 		if(f[i].fid == fid) {
 			f[i] = f[len f-1];
 			f = f[:len f-1];
-			return;
+			break;
 		}
 }
 
@@ -635,16 +635,11 @@ killgrp(pid: int)
 {
 	fd := sys->open(sprint("/prog/%d/ctl", pid), Sys->OWRITE);
 	if(fd != nil)
-		sys->fprint(fd, "killgrp");
-}
-
-warn(s: string)
-{
-	sys->fprint(sys->fildes(2), "%s\n", s);
+		fprint(fd, "killgrp");
 }
 
 say(s: string)
 {
 	if(dflag)
-		sys->fprint(sys->fildes(2), "%s\n", s);
+		fprint(fildes(2), "%s\n", s);
 }

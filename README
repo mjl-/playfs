@@ -17,6 +17,7 @@ typically mounted under /mnt/play
 	playlist in order of being played.  when playing in "norandom" order, this will be the same as the contents of /list.  when playing random, this is the shuffled list.  note that only /list is writable, /orderlist is read-only.
 
 todo:
+- buttons for volume +/- in playview
 - think about an acme program, mostly commands that say "play" "stop" etc.
 - manual pages, eventually
 
