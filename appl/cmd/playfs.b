@@ -38,7 +38,7 @@ tab := array[] of {
 	(Qevents,	"events",	8r444),
 	(Qlist,		"list",		8r666),
 	(Qorderlist,	"orderlist",	8r444),
-	(Qoffset,	"offset",	8r444),
+	(Qoffset,	"offset",	8r666),
 };
 
 Playing, Started, Paused, Stopped: con iota;
@@ -293,7 +293,7 @@ player(pidch: chan of int, path: string)
 
 	spawn stream(pfd, infds[0]);
 	pausech = chan of int;
-	writech := chan[8] of array of byte;
+	writech := chan[1] of array of byte;
 	spawn decreader(outfds[0], writech);
 	spawn run(infds[1], outfds[1], "mp3dec");
 	infds = nil;
@@ -454,6 +454,13 @@ dostyx(gm: ref Tmsg)
 			if(len playlist > 0 && state == Started)
 				start();
 			srv.reply(ref Rmsg.Write(m.tag, len m.data));
+		Qoffset =>
+			offset := int string m.data;
+			if(offset >= 0 && offset < len playlist) {
+				playoff = offset;
+				srv.reply(ref Rmsg.Write(m.tag, len m.data));
+			} else
+				return replyerror(m, "offset outside playlist range");
 		* =>
 			srv.default(m);
 		}
