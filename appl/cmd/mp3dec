@@ -1,0 +1,2 @@
+#!/dis/sh.dis
+os /usr/local/bin/mpg123 -s - >[2]/dev/null

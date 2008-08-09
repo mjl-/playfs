@@ -1,0 +1,44 @@
+#!/dis/sh.dis
+sh -c {
+load std tk expr
+pctl newpgrp
+wid=${tk window wm/playview}
+chan cmd
+chan audiocmd
+tk namechan $wid cmd
+tk namechan $wid audiocmd
+tk $wid frame .f1
+tk $wid frame .f2
+
+tk $wid button '.bplay -text play -command {send cmd play}'
+tk $wid button '.bpause -text pause -command {send cmd pause}'
+tk $wid button '.bstop -text stop -command {send cmd stop}'
+tk $wid button '.bprev -text prev -command {send cmd previous}'
+tk $wid button '.bnext -text next -command {send cmd next}'
+tk $wid button '.brew -text rewind -command {send cmd rewind}'
+tk $wid label '.lrand -text random'
+tk $wid button '.bnorand -text - -command {send cmd norandom}'
+tk $wid button '.brand -text + -command {send cmd random}'
+tk $wid label '.lrep -text repeat'
+tk $wid button '.bnorep -text - -command {send cmd norepeat}'
+tk $wid button '.brep -text + -command {send cmd repeat}'
+tk $wid label '.lvol -text volume'
+tk $wid button '.bvolmin -text - -command {send audiocmd 10 -}'
+tk $wid button '.bvolplus -text + -command {send audiocmd 10 +}'
+tk $wid label '.event -text -'
+tk $wid pack .bplay .bpause .bstop .bprev .bnext .brew .lrand .bnorand .brand .lrep .bnorep .brep .lvol .bvolmin .bvolplus -side left -in .f1
+tk $wid pack .event -in .f2
+tk $wid pack .f1 .f2
+tk onscreen $wid
+tk $wid update
+while {} { tk winctl $wid ${recv $wid} } &
+while {} { echo ${recv cmd} >/mnt/play/ctl } &
+vol=50
+while {} {
+	vol=${expr $vol ${split ' ' ${recv audiocmd}}}
+	if{~ 1 ${expr $vol 100 gt}} { vol=100 }
+	if{~ 1 ${expr $vol 0 lt}} { vol=0 }
+	echo -n out vol $vol >/dev/audioctl
+} &
+{ </mnt/play/events { while {} { tk $wid .event configure -text ''''^"{read}; tk $wid update} }} &
+}

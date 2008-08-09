@@ -1,0 +1,12 @@
+<../../mkconfig
+
+DIRS=\
+
+TARG=\
+	playview
+
+SYSMODULES=\
+
+DISBIN=$ROOT/dis
+
+<$ROOT/mkfiles/mkdis
