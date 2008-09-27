@@ -1,26 +1,60 @@
+# status
+
+don't know, haven't tried using it in a while.  probably needs quite
+some work.  don't expect it to work.
+
+
+# intro
+
 playfs - maintain play list and play audio files
 
-typically mounted under /mnt/play
-/ctl
-	write commands to, such as "play", "stop", "pause", "next", "previous", "rewind" "repeat", "norepeat", "random", "norandom"
-/events
-	read events from, such as "done", "playing $path", "error $path $error" "stopped" "started"
-/list
-	the playlist.  read the entire list from it (each line contains a path).
-	open with truncate to clear the list, write to it to add to the list.
-	read back in the order the elements were written
-/status
-	current status of player: started, stopped, paused, or playing $path
-/offset
-	offset (in line numbers) in playlist, starts at 0.  index to orderlist.  readable and writable.
-/orderlist
-	playlist in order of being played.  when playing in "norandom" order, this will be the same as the contents of /list.  when playing random, this is the shuffled list.  note that only /list is writable, /orderlist is read-only.
+typically mounted under /mnt/play.
 
-todo:
+/ctl
+        write commands to, such as "play", "stop", "pause", "next",
+        "previous", "rewind" "repeat", "norepeat", "random",
+        "norandom"
+/events
+        read events from, such as "done", "playing $path", "error
+        $path $error" "stopped" "started"
+/list
+        the playlist.  read the entire list from it (each line
+        contains a path).  open with truncate to clear the list,
+        write to it to add to the list.  read back in the order the
+        elements were written
+/status
+        current status of player: started, stopped, paused, or
+        playing $path
+/offset
+        offset (in line numbers) in playlist, starts at 0.  index
+        to orderlist.  readable and writable.
+/orderlist
+        playlist in order of being played.  when playing in "norandom"
+        order, this will be the same as the contents of /list.  when
+        playing random, this is the shuffled list.  note that only
+        /list is writable, /orderlist is read-only.
+
+
+# install
+
+first, ensure a "mkconfig" file is present.  a bind/symlink to the
+mkconfig of your inferno install should do.  now "mk" and "mk
+install" to compile and install the files.
+
+
+# licence & author
+
+this code is in the public domain, written by mechiel lukkien,
+reachable at mechiel@ueber.net or mechiel@xs4all.nl.
+
+
+# todo
+
 - think about an acme program, mostly commands that say "play" "stop" etc.
 - manual pages, eventually
 
-testing:
+# testing
+
 - /offset writable
 - add mp3dec or play to this hg repo
 - read audio data and write to /dev/audio ourselves, allows implementing pause 
@@ -29,12 +63,10 @@ testing:
 - give better status info in playview
 - status file showing current status?
 - better status messages, say what is playing.  add state to events fid when opened?
-	played path
-	error path err (quoted)
-	done (nothing more to play)
-	playing path (started playing path)
-	stopped (got a stop request or this is read when opening events file)
-	started (got a play request)
-	paused 
-
-done:
+	* played path
+	* error path err (quoted)
+	* done (nothing more to play)
+	* playing path (started playing path)
+	* stopped (got a stop request or this is read when opening events file)
+	* started (got a play request)
+	* paused 
